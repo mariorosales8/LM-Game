@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://d2352bux86ls6"]
+
+[ext_resource type="Script" uid="uid://bu2lis4wavl2q" path="res://scripts/campo.gd" id="1_fd73y"]
+
+[node name="Campo de batalla" type="Node2D" node_paths=PackedStringArray("ai_chat")]
+script = ExtResource("1_fd73y")
+ai_chat = NodePath("NobodyWhoChat")
+
+[node name="NobodyWhoChat" type="NobodyWhoChat" parent="." node_paths=PackedStringArray("model_node")]
+model_node = NodePath("../NobodyWhoModel")
+allow_thinking = false
+
+[node name="NobodyWhoModel" type="NobodyWhoModel" parent="."]
+model_path = "res://models/Qwen3-4B-Q4_K_M.gguf"

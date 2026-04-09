@@ -11,4 +11,4 @@ model_node = NodePath("../NobodyWhoModel")
 allow_thinking = false
 
 [node name="NobodyWhoModel" type="NobodyWhoModel" parent="."]
-model_path = "res://models/Qwen3-4B-Q4_K_M.gguf"
+model_path = "res://models/Qwen_Qwen3.5-4B-IQ4_XS (bartowski).gguf"

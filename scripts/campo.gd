@@ -7,6 +7,8 @@ var llaves: Dictionary = {}
 var propiedades: Dictionary = {}
 var funciones: Dictionary = {}
 var posicion_jugador: String = "Parado dentro del cuarto de objetos, junto a una pared al este colindante con otro cuarto. Observa sus alrededores, pero no se mueve de su posición."
+var condiciones_de_cambio: GrafoDirigido = GrafoDirigido.new()
+var zona_actual: String = "cuarto_objetos"
 
 
 func _ready() -> void:
@@ -37,11 +39,41 @@ func _ready() -> void:
 	propiedades["ciervo_imagen"] = "Desde el exterior, puedes ver al ciervo pastando tranquilamente. Desde el interior de los cuartos no se puede ver nada, pues las paredes son opacas."
 	propiedades["ciervo_sonido"] = "Desde muy cerca, casi tocando al ciervo, se pueden escuchar sus suaves ruidos de masticación mientras come hierba. Desde más lejos no se puede escuchar nada."
 	propiedades["ciervo_olor"] = "Si estás en la misma zona que el ciervo y estás cerca de él, se siente un olor almizclado como de tierra húmeda. Desde más lejos no se percibe ningún olor."
+	inicializar_condiciones_de_cambio()
 	# await lo_que_percibe_el_jugador_al_empezar()
 	await accion_jugador_acercarse_y_agarrar_ballesta()
 
 func _process(delta: float) -> void:
 	pass
+
+
+func inicializar_condiciones_de_cambio() -> void:
+	condiciones_de_cambio = GrafoDirigido.new()
+
+	var zonas = ["cuarto_objetos", "cuarto_dragon", "valle"]
+	for zona in zonas:
+		condiciones_de_cambio.agregar_nodo(zona)
+
+	condiciones_de_cambio.agregar_ida_y_vuelta(
+		"cuarto_objetos",
+		"cuarto_dragon",
+		"Debe abrirse o ceder el paso entre ambos cuartos para transferir acciones/efectos.",
+		"El dragón debe despertar y actuar hacia la división para afectar el cuarto de objetos."
+	)
+
+	condiciones_de_cambio.agregar_ida_y_vuelta(
+		"cuarto_objetos",
+		"valle",
+		"Debe existir salida al exterior y ejecutarse una acción que se proyecte fuera del cuarto.",
+		"Algo del valle debe acercarse o entrar al cuarto de objetos para modificar su estado."
+	)
+
+	condiciones_de_cambio.agregar_ida_y_vuelta(
+		"cuarto_dragon",
+		"valle",
+		"El dragón debe salir o emitir un efecto que alcance el exterior.",
+		"Algo del valle debe aproximarse al cuarto del dragón y generar un estímulo que lo afecte."
+	)
 
 
 func extraer_percepcion(texto: String) -> String:

@@ -57,22 +57,22 @@ func inicializar_condiciones_de_cambio() -> void:
 	condiciones_de_cambio.agregar_ida_y_vuelta(
 		"cuarto_objetos",
 		"cuarto_dragon",
-		"Debe abrirse o ceder el paso entre ambos cuartos para transferir acciones/efectos.",
-		"El dragón debe despertar y actuar hacia la división para afectar el cuarto de objetos."
+		"Que algo del cuarto de objetos: Aumente la cantidad de ruido o de olor que emite. O que pase a estar dentro del cuarto del dragón. O que emita un estímulo visual que se proyecte dentro del cuarto del dragón. O que la pared que colinda con el cuarto del dragón se vea afectada por algo del cuarto de objetos.",
+		"Que algo del cuarto del dragón: Aumente la cantidad de ruido o de olor que emite. O que pase a estar dentro del cuarto de objetos. O que emita un estímulo visual que se proyecte dentro del cuarto del objetos. O que la pared que colinda con el cuarto de objetos se vea afectada por algo del cuarto del dragón."
 	)
 
 	condiciones_de_cambio.agregar_ida_y_vuelta(
 		"cuarto_objetos",
 		"valle",
-		"Debe existir salida al exterior y ejecutarse una acción que se proyecte fuera del cuarto.",
-		"Algo del valle debe acercarse o entrar al cuarto de objetos para modificar su estado."
+		"Que algo del cuarto de objetos: Aumente la cantidad de ruido o de olor que emite. O que pase a estar fuera de los cuartos, en el valle. O que emita un estímulo visual que se proyecte fuera de los cuartos, en el valle. O que las paredes exteriores de los cuartos se vean afectadas por algo del cuarto de objetos.",
+		"Que algo del valle: Aumente la cantidad de ruido o de olor que emite. O que pase a estar en el cuarto de objetos. O que emita un estímulo visual que se proyecte dentro del cuarto de objetos. O que las paredes exteriores de los cuartos se vean afectadas por algo del valle."
 	)
 
 	condiciones_de_cambio.agregar_ida_y_vuelta(
 		"cuarto_dragon",
 		"valle",
-		"El dragón debe salir o emitir un efecto que alcance el exterior.",
-		"Algo del valle debe aproximarse al cuarto del dragón y generar un estímulo que lo afecte."
+		"Que algo del cuarto del dragón: Aumente la cantidad de ruido o de olor que emite. O que pase a estar fuera de los cuartos, en el valle. O que emita un estímulo visual que se proyecte fuera de los cuartos, en el valle. O que las paredes exteriores de los cuartos se vean afectadas por algo del cuarto del dragón.",
+		"Que algo del valle: Aumente la cantidad de ruido o de olor que emite. O que pase a estar en el cuarto del dragón. O que emita un estímulo visual que se proyecte dentro del cuarto del dragón. O que las paredes exteriores de los cuartos se vean afectadas por algo del valle."
 	)
 
 
@@ -99,6 +99,61 @@ func extraer_valor_etiqueta(texto: String, etiqueta: String) -> String:
 	var inicio_contenido = indice + etiqueta.length()
 	return texto_sin_asteriscos.substr(inicio_contenido).strip_edges()
 
+func procesar_accion(accion: String) -> Dictionary:
+	var resultados: Dictionary = {}
+
+	# Si la zona actual no existe en la gráfica de condiciones
+	if not condiciones_de_cambio.estructura.has(zona_actual):
+		push_warning("La zona actual '%s' no existe en condiciones_de_cambio." % zona_actual)
+		return resultados
+
+	# Encontrar zonas que puedan influir en la zona actual según la gráfica de condiciones de cambio
+	var zonas_vecinas: Array = []
+	for zona in condiciones_de_cambio.estructura.keys():
+		if zona == zona_actual:
+			continue
+		if condiciones_de_cambio.estructura[zona].has(zona_actual):
+			zonas_vecinas.append(zona)
+	print("Zonas vecinas que podrían influir en '%s': %s" % [zona_actual, zonas_vecinas])
+	# Para cada zona vecina, obtener las condiciones de cambio y consultar a la IA para verificar si realmente influye
+	for zona_origen in zonas_vecinas:
+		var condicion_de_cambio = condiciones_de_cambio.obtener_etiqueta(zona_origen, zona_actual)
+		var camino: Array = ["%s -> %s: %s" % [zona_origen, zona_actual, condicion_de_cambio]]
+
+		# Si hay caminos registrados, construimos la descripción
+		var descripcion_camino = "\n".join(camino)
+		var prompt = "Eres el verificador causal de una novela interactiva.\n"
+		prompt += "Zona actual objetivo: %s\n" % zona_actual
+		prompt += "Zona candidata de origen: %s\n" % zona_origen
+		prompt += "Acción del jugador: %s\n" % accion
+		prompt += "Estado global: %s\n" % estados.get("global", "")
+		prompt += "Estado de la zona actual (%s): %s\n" % [zona_actual, estados.get(zona_actual, "")]
+		prompt += "Estado de la zona candidata (%s): %s\n" % [zona_origen, estados.get(zona_origen, "")]
+		prompt += "Condiciones de influencia del camino posible:\n%s\n" % descripcion_camino
+		prompt += "Decide si, dadas la acción y esas condiciones, la zona candidata influye realmente sobre la zona actual en este turno."
+		prompt += " Responde con análisis breve y luego con estas etiquetas exactas:\n"
+		prompt += "INFLUYE: SI o NO\n"
+		prompt += "JUSTIFICACION: texto corto"
+
+		ai_chat.start_worker()
+		ai_chat.ask(prompt)
+		var response = await ai_chat.response_finished
+		print("Respuesta de verificación de influencia para camino %s -> %s:\n%s" % [zona_origen, zona_actual, response])
+
+		var valor_influye = extraer_valor_etiqueta(response, "INFLUYE:").to_upper()
+		var influye = valor_influye.begins_with("SI")
+		var justificacion = extraer_valor_etiqueta(response, "JUSTIFICACION:")
+
+		resultados[zona_origen] = {
+			"influye": influye,
+			"justificacion": justificacion,
+			"respuesta_llm": response,
+			"camino": camino
+		}
+		print("Verificación de influencia %s -> %s: %s" % [zona_origen, zona_actual, influye])
+
+	return resultados
+
 func lo_que_percibe_el_jugador_al_empezar():
 	var percepciones = await lo_que_se_percibe_desde_el_cuarto_objetos()
 	var prompt = "Esto es lo que el jugador percibe desde su posición: %s\n" % percepciones
@@ -111,6 +166,7 @@ func lo_que_percibe_el_jugador_al_empezar():
 
 func accion_jugador_acercarse_y_agarrar_ballesta():
 	var accion = "El jugador camina dentro del cuarto de objetos hasta la ballesta, la toma con ambas manos y la sostiene frente a sí para inspeccionarla."
+	await procesar_accion(accion)
 	var estado_actualizado_ballesta = await actualizar_estado_ballesta(accion)
 	if not estado_actualizado_ballesta.is_empty():
 		estados["ballesta"] = estado_actualizado_ballesta

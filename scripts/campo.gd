@@ -99,7 +99,7 @@ func extraer_valor_etiqueta(texto: String, etiqueta: String) -> String:
 	var inicio_contenido = indice + etiqueta.length()
 	return texto_sin_asteriscos.substr(inicio_contenido).strip_edges()
 
-func procesar_accion(accion: String) -> Dictionary:
+func afecta_accion_deprecated(accion: String) -> Dictionary:
 	var resultados: Dictionary = {}
 
 	# Si la zona actual no existe en la gráfica de condiciones
@@ -107,15 +107,15 @@ func procesar_accion(accion: String) -> Dictionary:
 		push_warning("La zona actual '%s' no existe en condiciones_de_cambio." % zona_actual)
 		return resultados
 
-	# Encontrar zonas que puedan influir en la zona actual según la gráfica de condiciones de cambio
+	# Encontrar zonas conectadas directamente con la zona actual según la gráfica de condiciones de cambio
 	var zonas_vecinas: Array = []
 	for zona in condiciones_de_cambio.estructura.keys():
 		if zona == zona_actual:
 			continue
 		if condiciones_de_cambio.estructura[zona].has(zona_actual):
 			zonas_vecinas.append(zona)
-	print("Zonas vecinas que podrían influir en '%s': %s" % [zona_actual, zonas_vecinas])
-	# Para cada zona vecina, obtener las condiciones de cambio y consultar a la IA para verificar si realmente influye
+	print("Zonas vecinas que podrían afectar la acción en '%s': %s" % [zona_actual, zonas_vecinas])
+	# Para cada zona vecina, obtener las condiciones de cambio y consultar a la IA para verificar si afecta la acción
 	for zona_origen in zonas_vecinas:
 		var condicion_de_cambio = condiciones_de_cambio.obtener_etiqueta(zona_origen, zona_actual)
 		var camino: Array = ["%s -> %s: %s" % [zona_origen, zona_actual, condicion_de_cambio]]
@@ -130,29 +130,141 @@ func procesar_accion(accion: String) -> Dictionary:
 		prompt += "Estado de la zona actual (%s): %s\n" % [zona_actual, estados.get(zona_actual, "")]
 		prompt += "Estado de la zona candidata (%s): %s\n" % [zona_origen, estados.get(zona_origen, "")]
 		prompt += "Condiciones de influencia del camino posible:\n%s\n" % descripcion_camino
-		prompt += "Decide si, dadas la acción y esas condiciones, la zona candidata influye realmente sobre la zona actual en este turno."
+		prompt += "Decide si, dadas la acción y esas condiciones, la zona candidata afecta de alguna manera la capacidad del jugador de realizar la acción."
 		prompt += " Responde con análisis breve y luego con estas etiquetas exactas:\n"
-		prompt += "INFLUYE: SI o NO\n"
+		prompt += "AFECTA_ACCION: SI o NO\n"
 		prompt += "JUSTIFICACION: texto corto"
 
 		ai_chat.start_worker()
 		ai_chat.ask(prompt)
 		var response = await ai_chat.response_finished
-		print("Respuesta de verificación de influencia para camino %s -> %s:\n%s" % [zona_origen, zona_actual, response])
+		print("Respuesta de verificación de afectación para camino %s -> %s:\n%s" % [zona_origen, zona_actual, response])
 
-		var valor_influye = extraer_valor_etiqueta(response, "INFLUYE:").to_upper()
-		var influye = valor_influye.begins_with("SI")
+		var valor_afecta_accion = extraer_valor_etiqueta(response, "AFECTA_ACCION:").to_upper()
+		var afecta_accion = valor_afecta_accion.begins_with("SI")
 		var justificacion = extraer_valor_etiqueta(response, "JUSTIFICACION:")
 
 		resultados[zona_origen] = {
-			"influye": influye,
+			"afecta_accion": afecta_accion,
 			"justificacion": justificacion,
 			"respuesta_llm": response,
 			"camino": camino
 		}
-		print("Verificación de influencia %s -> %s: %s" % [zona_origen, zona_actual, influye])
+		print("Verificación de afectación %s -> %s: %s" % [zona_origen, zona_actual, afecta_accion])
 
 	return resultados
+
+func get_zonas_con_cambio_tras_accion(accion: String) -> Array:
+	var zonas_con_cambio: Array = []
+
+	if not condiciones_de_cambio.estructura.has(zona_actual):
+		push_warning("La zona actual '%s' no existe en condiciones_de_cambio." % zona_actual)
+		return zonas_con_cambio
+
+	var conexiones_salida: Dictionary = condiciones_de_cambio.estructura[zona_actual]
+	var vecinos_influenciables: Array = []
+	for zona_vecina in conexiones_salida.keys():
+		var condicion = condiciones_de_cambio.obtener_etiqueta(zona_actual, zona_vecina)
+		if not condicion.strip_edges().is_empty():
+			vecinos_influenciables.append(zona_vecina)
+
+	print("Zonas vecinas que pueden ser influidas desde '%s': %s" % [zona_actual, vecinos_influenciables])
+
+	var resultados: Dictionary = {}
+	for zona_destino in vecinos_influenciables:
+		var condicion_de_cambio = condiciones_de_cambio.obtener_etiqueta(zona_actual, zona_destino)
+		var prompt = "Eres el verificador causal de una novela interactiva.\n"
+		prompt += "Zona de origen (zona actual): %s\n" % zona_actual
+		prompt += "Zona vecina influenciable (destino): %s\n" % zona_destino
+		prompt += "Acción del jugador: %s\n" % accion
+		prompt += "Estado global: %s\n" % estados.get("global", "")
+		prompt += "Estado de la zona origen (%s): %s\n" % [zona_actual, estados.get(zona_actual, "")]
+		prompt += "Estado de la zona vecina destino (%s): %s\n" % [zona_destino, estados.get(zona_destino, "")]
+		prompt += "Condición para que haya influencia de %s a %s:\n%s\n" % [zona_actual, zona_destino, condicion_de_cambio]
+		prompt += "Decide si, dada la acción del jugador, se produce un cambio en la zona vecina destino según esa condición. "
+		prompt += "Escribe tu análisis en el orden en que lo vas realizando, y después, escribe PRODUCE_CAMBIO: seguido de SI o NO según si se produce o no el cambio."
+
+		ai_chat.start_worker()
+		ai_chat.ask(prompt)
+		var response = await ai_chat.response_finished
+		print("Respuesta de verificación de cambio para camino %s -> %s:\n%s" % [zona_actual, zona_destino, response])
+
+		var valor_produce_cambio = extraer_valor_etiqueta(response, "PRODUCE_CAMBIO:").to_upper()
+		var produce_cambio = valor_produce_cambio.begins_with("SI")
+
+		resultados[zona_destino] = produce_cambio
+		print("Verificación de cambio %s -> %s: %s" % [zona_actual, zona_destino, produce_cambio])
+
+	for zona in resultados.keys():
+		if resultados[zona]:
+			zonas_con_cambio.append(zona)
+
+	print("La acción produce cambio en las zonas: %s" % zonas_con_cambio)
+	return zonas_con_cambio
+
+func obtener_elementos_de_zona(zona: String) -> Array:
+	var zonas_a_llaves = {
+		"cuarto_objetos": "objetos",
+		"cuarto_dragon": "en_dragon",
+		"valle": "en_valle"
+	}
+
+	if not zonas_a_llaves.has(zona):
+		return []
+
+	var llave_zona = zonas_a_llaves[zona]
+	if not llaves.has(llave_zona):
+		return []
+
+	return llaves[llave_zona]
+
+func construir_contexto_zona_para_accion(zona: String) -> String:
+	var contexto = "Zona: %s\n" % zona
+	contexto += "Estado de la zona: %s\n" % estados.get(zona, "")
+
+	var elementos = obtener_elementos_de_zona(zona)
+	if elementos.is_empty():
+		contexto += "Elementos en zona: (ninguno registrado)\n"
+		return contexto
+
+	contexto += "Elementos en zona:\n"
+	for elemento in elementos:
+		contexto += "- %s: %s\n" % [elemento, estados.get(elemento, "Sin estado registrado")]
+
+	return contexto
+
+func procesar_accion(accion: String) -> bool:
+	var zonas_con_cambio = await get_zonas_con_cambio_tras_accion(accion)
+	var zonas_relevantes = [zona_actual] + zonas_con_cambio
+
+	var contexto_relevante = ""
+	for zona in zonas_relevantes:
+		contexto_relevante += construir_contexto_zona_para_accion(zona) + "\n"
+
+	var prompt = "Eres el verificador de viabilidad de acciones de una novela interactiva.\n"
+	prompt += "Acción del jugador: %s\n" % accion
+	prompt += "Zona actual del jugador: %s\n" % zona_actual
+	prompt += "Posición del jugador: %s\n" % posicion_jugador
+	prompt += "Estado global: %s\n\n" % estados.get("global", "")
+	prompt += "Debes basarte exclusivamente en la información de estas zonas:\n"
+	prompt += "%s\n" % contexto_relevante
+	prompt += "No inventes información externa. Decide si la acción es posible o no dadas las condiciones descritas.\n"
+	prompt += "Escribe tu análisis en el orden en que lo vas realizando, y después, escribe ACCION_POSIBLE: seguido de SI o NO según corresponda."
+
+	ai_chat.start_worker()
+	ai_chat.ask(prompt)
+	var response = await ai_chat.response_finished
+	print("Verificación de posibilidad de acción:\n%s" % response)
+
+	var valor_accion_posible = extraer_valor_etiqueta(response, "ACCION_POSIBLE:").to_upper()
+	var accion_posible = valor_accion_posible.begins_with("SI")
+
+	if accion_posible:
+		print("ACCIÓN POSIBLE: SI.")
+	else:
+		print("ACCIÓN POSIBLE: NO.")
+
+	return accion_posible
 
 func lo_que_percibe_el_jugador_al_empezar():
 	var percepciones = await lo_que_se_percibe_desde_el_cuarto_objetos()
@@ -166,7 +278,10 @@ func lo_que_percibe_el_jugador_al_empezar():
 
 func accion_jugador_acercarse_y_agarrar_ballesta():
 	var accion = "El jugador camina dentro del cuarto de objetos hasta la ballesta, la toma con ambas manos y la sostiene frente a sí para inspeccionarla."
-	await procesar_accion(accion)
+	var accion_posible = await procesar_accion(accion)
+	if not accion_posible:
+		print("La acción no se ejecuta porque no es posible en el estado actual.")
+		return "No puedes realizar esa acción ahora."
 	var estado_actualizado_ballesta = await actualizar_estado_ballesta(accion)
 	if not estado_actualizado_ballesta.is_empty():
 		estados["ballesta"] = estado_actualizado_ballesta

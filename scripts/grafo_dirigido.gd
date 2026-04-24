@@ -26,7 +26,7 @@ func agregar_ida_y_vuelta(nodo_a: String, nodo_b: String, etiqueta_a_b: String, 
 	agregar_arista(nodo_b, nodo_a, etiqueta_b_a)
 
 # Obtiene el valor de una arista específica
-func obtener_etiqueta(desde: String, hasta: String) -> String:
+func get_etiqueta(desde: String, hasta: String) -> String:
 	if estructura.has(desde) and estructura[desde].has(hasta):
 		return estructura[desde][hasta]
 	return ""

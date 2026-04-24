@@ -5,7 +5,6 @@ extends Node2D
 var estados: Dictionary = {}
 var llaves: Dictionary = {}
 var propiedades: Dictionary = {}
-var funciones: Dictionary = {}
 var posicion_jugador: String = "Parado dentro del cuarto de objetos, junto a una pared al este colindante con otro cuarto. Observa sus alrededores, pero no se mueve de su posición."
 var condiciones_de_cambio: GrafoDirigido = GrafoDirigido.new()
 var zona_actual: String = "cuarto_objetos"
